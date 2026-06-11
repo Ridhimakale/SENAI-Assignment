@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.enums import JobStatus
 from app.models.mixins import TimestampMixin
+from app.models.sqlalchemy_types import enum_type
 
 
 class ProcessingJob(TimestampMixin, Base):
@@ -12,7 +13,7 @@ class ProcessingJob(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus, name="job_status"),
+        enum_type(JobStatus, name="job_status"),
         default=JobStatus.QUEUED,
         nullable=False,
     )

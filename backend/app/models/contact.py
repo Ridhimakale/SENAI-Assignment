@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.enums import ContactStatus
 from app.models.mixins import TimestampMixin
+from app.models.sqlalchemy_types import enum_type
 
 
 class Contact(TimestampMixin, Base):
@@ -18,7 +19,7 @@ class Contact(TimestampMixin, Base):
     name: Mapped[str | None] = mapped_column(String(255))
     company: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[ContactStatus] = mapped_column(
-        Enum(ContactStatus, name="contact_status"),
+        enum_type(ContactStatus, name="contact_status"),
         default=ContactStatus.ACTIVE,
         nullable=False,
     )

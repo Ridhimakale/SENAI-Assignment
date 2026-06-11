@@ -1,0 +1,1 @@
+"""Email stream simulation helpers."""

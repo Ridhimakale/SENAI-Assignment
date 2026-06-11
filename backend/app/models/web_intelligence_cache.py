@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 from app.models.enums import WebIntelligenceStatus
 from app.models.mixins import TimestampMixin
+from app.models.sqlalchemy_types import enum_type
 
 
 class WebIntelligenceCache(TimestampMixin, Base):
@@ -20,7 +21,7 @@ class WebIntelligenceCache(TimestampMixin, Base):
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[WebIntelligenceStatus] = mapped_column(
-        Enum(WebIntelligenceStatus, name="web_intelligence_status"),
+        enum_type(WebIntelligenceStatus, name="web_intelligence_status"),
         nullable=False,
     )
     error_message: Mapped[str | None] = mapped_column(Text)

@@ -17,9 +17,15 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-contact_status = postgresql.ENUM("VIP", "Blocked", "Active", "Churned", name="contact_status")
-thread_status = postgresql.ENUM("Open", "Resolved", "Escalated", "Ignored", name="thread_status")
-email_status = postgresql.ENUM("Received", "Processing", "Replied", "Escalated", "Ignored", name="email_status")
+contact_status = postgresql.ENUM(
+    "VIP", "Blocked", "Active", "Churned", name="contact_status", create_type=False
+)
+thread_status = postgresql.ENUM(
+    "Open", "Resolved", "Escalated", "Ignored", name="thread_status", create_type=False
+)
+email_status = postgresql.ENUM(
+    "Received", "Processing", "Replied", "Escalated", "Ignored", name="email_status", create_type=False
+)
 email_category = postgresql.ENUM(
     "Complaint",
     "Inquiry",
@@ -32,16 +38,27 @@ email_category = postgresql.ENUM(
     "Internal",
     "Other",
     name="email_category",
+    create_type=False,
 )
-email_urgency = postgresql.ENUM("Critical", "High", "Medium", "Low", name="email_urgency")
-action_type = postgresql.ENUM("Auto-Reply", "Escalate", "Legal-Flag", "Ticket-Created", "Ignored", name="action_type")
-action_status = postgresql.ENUM("Proposed", "Executed", "Blocked", "Failed", name="action_status")
-job_status = postgresql.ENUM("Queued", "Processing", "Completed", "Failed", "Skipped", name="job_status")
-ticket_status = postgresql.ENUM("Open", "InProgress", "Resolved", name="ticket_status")
+email_urgency = postgresql.ENUM(
+    "Critical", "High", "Medium", "Low", name="email_urgency", create_type=False
+)
+action_type = postgresql.ENUM(
+    "Auto-Reply", "Escalate", "Legal-Flag", "Ticket-Created", "Ignored", name="action_type", create_type=False
+)
+action_status = postgresql.ENUM(
+    "Proposed", "Executed", "Blocked", "Failed", name="action_status", create_type=False
+)
+job_status = postgresql.ENUM(
+    "Queued", "Processing", "Completed", "Failed", "Skipped", name="job_status", create_type=False
+)
+ticket_status = postgresql.ENUM("Open", "InProgress", "Resolved", name="ticket_status", create_type=False)
 classification_validation_status = postgresql.ENUM(
-    "Valid", "Invalid", "Repaired", "Failed", name="classification_validation_status"
+    "Valid", "Invalid", "Repaired", "Failed", name="classification_validation_status", create_type=False
 )
-web_intelligence_status = postgresql.ENUM("Success", "Failed", "SkippedRobots", name="web_intelligence_status")
+web_intelligence_status = postgresql.ENUM(
+    "Success", "Failed", "SkippedRobots", name="web_intelligence_status", create_type=False
+)
 
 
 def upgrade() -> None:
@@ -115,7 +132,7 @@ def upgrade() -> None:
         sa.Column("last_sentiment_score", sa.Float()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.UniqueConstraint("thread_id"),
+        sa.UniqueConstraint("thread_id", "sender_email", name="uq_threads_thread_sender"),
     )
     op.create_index("ix_threads_sender_email", "threads", ["sender_email"])
     op.create_index("ix_threads_contact_id", "threads", ["contact_id"])

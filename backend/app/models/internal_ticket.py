@@ -4,6 +4,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 from app.models.enums import TicketStatus
 from app.models.mixins import TimestampMixin
+from app.models.sqlalchemy_types import enum_type
 
 
 class InternalTicket(TimestampMixin, Base):
@@ -17,7 +18,7 @@ class InternalTicket(TimestampMixin, Base):
     assignee: Mapped[str | None] = mapped_column(String(255))
     priority: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[TicketStatus] = mapped_column(
-        Enum(TicketStatus, name="ticket_status"),
+        enum_type(TicketStatus, name="ticket_status"),
         default=TicketStatus.OPEN,
         nullable=False,
     )

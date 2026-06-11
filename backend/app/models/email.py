@@ -5,8 +5,11 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+from app.models.classification_run import ClassificationRun
+from app.models.internal_ticket import InternalTicket
 from app.models.enums import EmailCategory, EmailStatus, EmailUrgency
 from app.models.mixins import TimestampMixin
+from app.models.sqlalchemy_types import enum_type
 
 
 class Email(TimestampMixin, Base):
@@ -26,16 +29,16 @@ class Email(TimestampMixin, Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     sentiment_score: Mapped[float | None]
     category: Mapped[EmailCategory | None] = mapped_column(
-        Enum(EmailCategory, name="email_category")
+        enum_type(EmailCategory, name="email_category")
     )
     urgency: Mapped[EmailUrgency | None] = mapped_column(
-        Enum(EmailUrgency, name="email_urgency")
+        enum_type(EmailUrgency, name="email_urgency")
     )
     requires_human: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     confidence: Mapped[float | None]
     raw_entities: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[EmailStatus] = mapped_column(
-        Enum(EmailStatus, name="email_status"),
+        enum_type(EmailStatus, name="email_status"),
         default=EmailStatus.RECEIVED,
         nullable=False,
     )

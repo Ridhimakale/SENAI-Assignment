@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -16,6 +17,18 @@ def error_response(error_code: str, message: str, details: object | None = None)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        if isinstance(exc.detail, dict) and "error_code" in exc.detail:
+            content = {"success": False, "error": exc.detail}
+        else:
+            content = error_response(
+                "HTTP_ERROR",
+                str(exc.detail),
+                {"status_code": exc.status_code},
+            )
+        return JSONResponse(status_code=exc.status_code, content=content)
+
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request, exc: RequestValidationError
@@ -25,7 +38,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=error_response(
                 "VALIDATION_ERROR",
                 "Request validation failed.",
-                exc.errors(),
+                jsonable_encoder(exc.errors()),
             ),
         )
 
