@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     classifier_prompt_version: str = "classifier_v1"
     classifier_confidence_threshold: float = 0.70
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_model: str = "llama-3.3-70b-versatile"
     agent_max_tool_calls: int = 6
 
 

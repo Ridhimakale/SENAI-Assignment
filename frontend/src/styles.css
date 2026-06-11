@@ -30,6 +30,10 @@ nav button.active { background: var(--ink); color: white; }
 .topbar h2 { margin: 3px 0 0; font-size: 28px; letter-spacing: 0; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .status-dot { width: 9px; height: 9px; background: #39a169; border-radius: 50%; box-shadow: 0 0 0 4px rgba(57,161,105,.15); }
+.stats-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.stats-card { background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(248,250,247,.9)); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow); display: grid; gap: 4px; }
+.stats-card span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.stats-card strong { font-size: 24px; line-height: 1; }
 .panel-stack { display: grid; gap: 14px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 .search-box { flex: 1; min-width: 240px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); padding: 9px 11px; border-radius: 8px; background: #fbfcfa; }
@@ -53,6 +57,7 @@ nav button.active { background: var(--ink); color: white; }
 .last-activity { color: var(--muted); font-size: 12px; }
 .thread-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) 360px; gap: 16px; align-items: start; }
 .email-pane, .timeline-pane, .context-card, .chart-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 16px; }
+.panel-empty { min-height: 320px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: 14px; background: rgba(255,255,255,.7); color: var(--muted); }
 .section-title { display: flex; gap: 8px; align-items: center; font-weight: 800; margin-bottom: 12px; }
 .email-pane h3 { margin: 0 0 4px; font-size: 22px; }
 .email-body { line-height: 1.65; white-space: pre-wrap; }
@@ -84,6 +89,7 @@ details summary { display: flex; gap: 8px; align-items: center; font-weight: 800
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
   nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stats-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .thread-row { grid-template-columns: 1fr 1fr; }
   .thread-grid { grid-template-columns: 1fr; }
 }
@@ -92,6 +98,7 @@ details summary { display: flex; gap: 8px; align-items: center; font-weight: 800
   .workspace { padding: 14px; }
   .topbar { display: grid; gap: 10px; }
   nav { grid-template-columns: 1fr; }
+  .stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .thread-row { grid-template-columns: 1fr; }
   .analytics-grid { grid-template-columns: 1fr; }
   .toolbar { align-items: stretch; }

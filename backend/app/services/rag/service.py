@@ -59,8 +59,8 @@ def get_rag_service() -> RagService:
     global _rag_service
     if _rag_service is None:
         settings = get_settings()
-        backend_root = Path(__file__).resolve().parents[3]
-        knowledge_base_path = (backend_root / settings.knowledge_base_path).resolve()
+        project_root = Path(__file__).resolve().parents[4]
+        knowledge_base_path = (project_root / settings.knowledge_base_path).resolve()
         _rag_service = RagService(
             knowledge_base_path=knowledge_base_path,
             embedding_provider=create_embedding_provider(settings.embedding_model_name),

@@ -187,9 +187,128 @@ const demoAnalytics = {
   performance: { total_actions: 31, auto_reply_count: 9, escalation_count: 13, auto_reply_rate: 0.29, escalation_rate: 0.42, average_confidence_score: 0.81 },
 };
 
+const CONTACT_DIRECTORY = [
+  { email: 'bob.jones@enterprise.net', label: 'Bob Jones', company: 'Enterprise', theme: 'SLA escalation' },
+  { email: 'alice.smith@greenlight-npo.org', label: 'Alice Smith', company: 'Greenlight NPO', theme: 'Pricing and pro-rata' },
+  { email: 'karen.w@retail-co.com', label: 'Karen W', company: 'Retail Co', theme: 'Refund and churn risk' },
+  { email: 'charlie@fastlane-startup.com', label: 'Charlie', company: 'Fastlane Startup', theme: 'Bug report' },
+  { email: 'eleanor.voss@healthcare-group.org', label: 'Eleanor Voss', company: 'Healthcare Group', theme: 'Enterprise compliance' },
+  { email: 'devops@internal.com', label: 'DevOps', company: 'Internal', theme: 'Internal operations' },
+  { email: 'marcus.del@fintech-startup.co', label: 'Marcus Del', company: 'Fintech Startup', theme: 'GDPR request' },
+  { email: 'nadia.k@global-logistics.com', label: 'Nadia K', company: 'Global Logistics', theme: 'Data corruption bug' },
+  { email: 'press@techcrunch-media.com', label: 'Press', company: 'TechCrunch Media', theme: 'Press inquiry' },
+  { email: 'procurement@bigcorp-global.com', label: 'BigCorp Procurement', company: 'BigCorp Global', theme: 'RFP and compliance' },
+  { email: 'security@alert-system.com', label: 'Security Alert', company: 'Alert System', theme: 'Security incident' },
+  { email: 'hr@internal.com', label: 'HR', company: 'Internal', theme: 'Internal policy' },
+];
+
+const FALLBACK_THREAD_MAP = new Map(demoThreads.map((thread) => [thread.id, thread]));
+
+function normalizeSentiment(score) {
+  if (typeof score !== 'number') return 'Neutral';
+  if (score <= -0.4) return 'Negative';
+  if (score >= 0.4) return 'Positive';
+  return 'Neutral';
+}
+
+function inferCompany(sender = '') {
+  return sender.includes('@') ? sender.split('@')[1].replace(/\..*$/, '').replace(/-/g, ' ') : sender;
+}
+
+function isMarketIntelligenceTriggered(row) {
+  const combinedText = `${row.subject || ''} ${row.messages.map((message) => message.body).join(' ')} ${row.sender || ''}`.toLowerCase();
+  return (
+    combinedText.includes('review') ||
+    combinedText.includes('trustpilot') ||
+    combinedText.includes('g2') ||
+    combinedText.includes('post publicly') ||
+    combinedText.includes('press') ||
+    combinedText.includes('investor') ||
+    row.sentimentScore < -0.6 ||
+    (row.category === 'Complaint' && (row.urgency === 'High' || row.urgency === 'Critical'))
+  );
+}
+
+function normalizeThreadRow(thread, contact) {
+  const emails = [...(thread.emails || [])].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  const latest = emails[emails.length - 1] || {};
+  const latestScore = latest.sentiment_score ?? 0;
+  const latestReasoning = latest.actions?.[0]?.agent_reasoning_log || [];
+  const latestRag = latest.rag_context?.results || [];
+  const latestMarket = latest.actions?.[0]?.tool_output?.market_intelligence_block || null;
+  const contactProfile = contact || {};
+  return {
+    id: thread.thread_id || String(thread.id),
+    sender: thread.sender_email || contactProfile.email || '',
+    company: contactProfile.company || inferCompany(thread.sender_email || contactProfile.email || ''),
+    subject: thread.subject || latest.subject || '(no subject)',
+    category: latest.category || thread.category || (normalizeSentiment(latestScore) === 'Negative' ? 'Complaint' : 'Inquiry'),
+    urgency: latest.urgency || (thread.status === 'Escalated' ? 'High' : 'Low'),
+    sentiment: latest.sentiment || normalizeSentiment(latestScore),
+    sentimentScore: typeof latestScore === 'number' ? latestScore : 0,
+    status: thread.status || 'Open',
+    requiresHuman: Boolean(latest.requires_human ?? thread.status !== 'Open'),
+    lastActivity: thread.last_updated_at || latest.timestamp || thread.first_seen_at,
+    priority: thread.priority_score ?? latest.priority_score ?? 0,
+    messages: emails.map((email) => ({
+      id: email.id || email.message_id,
+      emailId: typeof email.id === 'number' ? email.id : null,
+      subject: email.subject || '(no subject)',
+      body: email.body || '',
+      sentimentScore: email.sentiment_score ?? 0,
+      timestamp: email.timestamp,
+    })),
+    contact: {
+      status: contactProfile.status || 'Active',
+      accountValue: Number(contactProfile.account_value || 0),
+      churnRiskScore: Number(contactProfile.churn_risk_score || 0),
+      vipReason: contactProfile.vip_reason || null,
+      openThreads: contactProfile.open_threads || 0,
+      openTicketCount: contactProfile.open_ticket_count || 0,
+      subscriptionTier: contactProfile.subscription_tier || null,
+      renewalStatus: contactProfile.renewal_status || null,
+    },
+    reasoning: latestReasoning.length
+      ? latestReasoning
+      : FALLBACK_THREAD_MAP.get(thread.thread_id || String(thread.id))?.reasoning || [],
+    rag: latestRag.length
+      ? latestRag
+      : FALLBACK_THREAD_MAP.get(thread.thread_id || String(thread.id))?.rag || [],
+    market: latestMarket || FALLBACK_THREAD_MAP.get(thread.thread_id || String(thread.id))?.market || null,
+    entities: latest.raw_entities || FALLBACK_THREAD_MAP.get(thread.thread_id || String(thread.id))?.entities || {},
+  };
+}
+
+function buildFallbackThreads() {
+  return [...demoThreads];
+}
+
+function mergeThreadRows(existingRows, incomingRows) {
+  const merged = new Map(existingRows.map((row) => [row.id, row]));
+  incomingRows.forEach((row) => {
+    merged.set(row.id, row);
+  });
+  return [...merged.values()];
+}
+
 async function safeFetch(path, fallback) {
   try {
     const response = await fetch(`${API_BASE}${path}`);
+    if (!response.ok) return fallback;
+    const payload = await response.json();
+    return payload.data || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function safePost(path, body, fallback) {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     if (!response.ok) return fallback;
     const payload = await response.json();
     return payload.data || fallback;
@@ -202,21 +321,35 @@ function App() {
   const [activeView, setActiveView] = useState('inbox');
   const [threads, setThreads] = useState(demoThreads);
   const [selectedId, setSelectedId] = useState(demoThreads[0].id);
+  const [selectedInsight, setSelectedInsight] = useState(null);
   const [tab, setTab] = useState('All');
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState('priority');
   const [analytics, setAnalytics] = useState(demoAnalytics);
+  const [dashboardStats, setDashboardStats] = useState({
+    pending: 0,
+    replied: 0,
+    escalated: 0,
+    critical: 0,
+    spam: 0,
+    needs_human: 0,
+  });
   const [lastSync, setLastSync] = useState(new Date());
+  const [connectionState, setConnectionState] = useState('loading');
+  const [actionMessage, setActionMessage] = useState('Dashboard ready.');
+  const [draftBodies, setDraftBodies] = useState({});
+  const [assignees, setAssignees] = useState({});
 
   useEffect(() => {
-    let isMounted = true;
-    async function refresh() {
+    let cancelled = false;
+
+    async function refreshAnalytics() {
       const sentiment = await safeFetch('/analytics/sentiment-trend', { points: demoAnalytics.sentimentTrend });
       const categories = await safeFetch('/analytics/category-breakdown', { items: demoAnalytics.categories });
       const heatmap = await safeFetch('/analytics/response-heatmap', { points: demoAnalytics.heatmap });
       const atRisk = await safeFetch('/analytics/at-risk-accounts', { accounts: demoAnalytics.atRisk });
       const performance = await safeFetch('/analytics/agent-performance', demoAnalytics.performance);
-      if (!isMounted) return;
+      if (cancelled) return;
       setAnalytics({
         sentimentTrend: sentiment.points || demoAnalytics.sentimentTrend,
         categories: categories.items || demoAnalytics.categories,
@@ -224,12 +357,50 @@ function App() {
         atRisk: atRisk.accounts || demoAnalytics.atRisk,
         performance,
       });
+    }
+
+    async function refreshDashboardStats() {
+      const stats = await safeFetch('/dashboard/stats', dashboardStats);
+      if (!cancelled) {
+        setDashboardStats(stats);
+      }
+    }
+
+    async function refreshInbox() {
+      const liveRowsNested = await Promise.all(
+        CONTACT_DIRECTORY.map(async (contact) => {
+          const payload = await safeFetch(`/threads/${encodeURIComponent(contact.email)}`, null);
+          if (!payload?.threads?.length) {
+            return buildFallbackThreads().filter((thread) => thread.sender === contact.email);
+          }
+          const contactProfile = payload.contact || { email: contact.email, company: contact.company };
+          return payload.threads.map((thread) =>
+            normalizeThreadRow(thread, {
+              ...contactProfile,
+              email: contact.email,
+              company: contactProfile.company || contact.company,
+            }),
+          );
+        }),
+      );
+
+      const liveRows = liveRowsNested.flat().filter(Boolean);
+      if (cancelled) return;
+      setThreads(liveRows.length ? mergeThreadRows(buildFallbackThreads(), liveRows) : buildFallbackThreads());
+      setConnectionState(liveRows.length ? 'live' : 'demo');
       setLastSync(new Date());
     }
-    refresh();
-    const timer = setInterval(refresh, POLL_INTERVAL_MS);
+
+    async function refreshAll() {
+      setConnectionState('loading');
+      await Promise.all([refreshAnalytics(), refreshDashboardStats(), refreshInbox()]);
+      if (cancelled) return;
+    }
+
+    refreshAll();
+    const timer = setInterval(refreshAll, POLL_INTERVAL_MS);
     return () => {
-      isMounted = false;
+      cancelled = true;
       clearInterval(timer);
     };
   }, []);
@@ -242,7 +413,7 @@ function App() {
         if (tab === 'Auto-Replied' && thread.status !== 'Replied') return false;
         if (tab === 'Escalated' && thread.status !== 'Escalated') return false;
         if (tab === 'Spam' && thread.category !== 'Spam') return false;
-        return !lowered || `${thread.sender} ${thread.subject} ${thread.messages.map((m) => m.body).join(' ')}`.toLowerCase().includes(lowered);
+        return !lowered || `${thread.sender} ${thread.company} ${thread.subject} ${thread.messages.map((m) => m.body).join(' ')}`.toLowerCase().includes(lowered);
       })
       .sort((a, b) => {
         if (sortBy === 'priority') return b.priority - a.priority;
@@ -251,14 +422,133 @@ function App() {
       });
   }, [threads, tab, query, sortBy]);
 
-  const selectedThread = threads.find((thread) => thread.id === selectedId) || threads[0];
+  const selectedThread = filteredThreads.find((thread) => thread.id === selectedId) || filteredThreads[0] || threads[0];
+
+  useEffect(() => {
+    if (!selectedThread) return;
+    setSelectedId(selectedThread.id);
+  }, [selectedThread?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshSelectedThreadInsight() {
+      if (!selectedThread) {
+        setSelectedInsight(null);
+        return;
+      }
+      const latestMessage = selectedThread.messages[selectedThread.messages.length - 1];
+      const latestEmailId =
+        Number.isFinite(Number(latestMessage?.emailId))
+          ? Number(latestMessage.emailId)
+          : Number.isFinite(Number(latestMessage?.id))
+            ? Number(latestMessage.id)
+            : null;
+      const queryText = [selectedThread.subject, latestMessage?.body, selectedThread.sender].filter(Boolean).join(' ').slice(0, 3500);
+      const shouldFetchMarket = isMarketIntelligenceTriggered(selectedThread);
+      const [rag, agent, reputation] = await Promise.all([
+        safeFetch(`/rag/search?q=${encodeURIComponent(queryText)}`, { results: selectedThread.rag }),
+        Number.isFinite(latestEmailId) && latestEmailId > 0
+          ? safeFetch(`/agent/dry-run/${latestEmailId}`, null)
+          : Promise.resolve(null),
+        shouldFetchMarket
+          ? safeFetch(`/intelligence/reputation?company=${encodeURIComponent(selectedThread.company || inferCompany(selectedThread.sender))}`, null)
+          : Promise.resolve(null),
+      ]);
+      if (cancelled) return;
+      setSelectedInsight({
+        reasoningTrace: agent?.reasoning_trace || selectedThread.reasoning || [],
+        proposedActions: agent?.proposed_actions || [],
+        ragResults: rag?.results || selectedThread.rag || [],
+        marketBlock: reputation?.market_intelligence_block || selectedThread.market || null,
+        marketSummary: reputation?.summary || null,
+      });
+    }
+    refreshSelectedThreadInsight();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedThread?.id]);
 
   function bulkSetStatus(status) {
     setThreads((current) => current.map((thread) => ({ ...thread, status })));
+    setActionMessage(`Bulk action applied: ${status}.`);
   }
 
   function markSelected(status) {
-    setThreads((current) => current.map((thread) => (thread.id === selectedThread.id ? { ...thread, status } : thread)));
+    if (!selectedThread) return;
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === selectedThread.id
+          ? {
+              ...thread,
+              status,
+              category: status === 'Spam' ? 'Spam' : thread.category,
+              requiresHuman: status === 'Escalated' ? true : thread.requiresHuman,
+            }
+          : thread,
+      ),
+    );
+    setActionMessage(`Selected thread marked as ${status}.`);
+  }
+
+  async function handleEditDraft() {
+    if (!selectedThread) return;
+    const latestMessage = selectedThread.messages[selectedThread.messages.length - 1];
+    const existing = draftBodies[selectedThread.id] || `Thanks for reaching out. We are reviewing: ${latestMessage?.body || selectedThread.subject}`;
+    const edited = window.prompt('Edit the draft reply', existing);
+    if (!edited) return;
+    setDraftBodies((current) => ({ ...current, [selectedThread.id]: edited }));
+    setActionMessage('Draft updated locally.');
+  }
+
+  async function handleApproveAndSend() {
+    if (!selectedThread) return;
+    const latestMessage = selectedThread.messages[selectedThread.messages.length - 1];
+    const emailId = latestMessage?.emailId;
+    if (!emailId) {
+      setActionMessage('No backend email ID found for this thread.');
+      return;
+    }
+    const replyBody =
+      draftBodies[selectedThread.id] ||
+      `Thanks for reaching out. We are reviewing your ${selectedThread.category.toLowerCase()} request and will follow up shortly.`;
+    const result = await safePost(`/respond/${emailId}`, {
+      body: replyBody,
+      sender: 'dashboard',
+    }, null);
+    if (!result) {
+      setActionMessage('Could not send reply right now.');
+      return;
+    }
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === selectedThread.id
+          ? { ...thread, status: 'Replied', requiresHuman: false }
+          : thread,
+      ),
+    );
+    setActionMessage(`Reply sent for ${selectedThread.subject}.`);
+  }
+
+  function handleAssignSelected() {
+    if (!selectedThread) return;
+    const assignee = window.prompt('Assign to whom?', assignees[selectedThread.id] || 'support-leadership');
+    if (!assignee) return;
+    setAssignees((current) => ({ ...current, [selectedThread.id]: assignee }));
+    setThreads((current) =>
+      current.map((thread) => (thread.id === selectedThread.id ? { ...thread, assignedTo: assignee } : thread)),
+    );
+    setActionMessage(`Assigned to ${assignee}.`);
+  }
+
+  function handleArchiveSelected() {
+    if (!selectedThread) return;
+    setThreads((current) =>
+      current.map((thread) =>
+        thread.id === selectedThread.id ? { ...thread, status: 'Archived' } : thread,
+      ),
+    );
+    setActionMessage('Thread archived.');
   }
 
   return (
@@ -272,9 +562,15 @@ function App() {
           </div>
         </div>
         <nav>
-          <button className={activeView === 'inbox' ? 'active' : ''} onClick={() => setActiveView('inbox')}><Inbox size={18} /> Mission Control</button>
-          <button className={activeView === 'thread' ? 'active' : ''} onClick={() => setActiveView('thread')}><Mail size={18} /> Thread Workspace</button>
-          <button className={activeView === 'analytics' ? 'active' : ''} onClick={() => setActiveView('analytics')}><LineChartIcon size={18} /> Analytics</button>
+          <button className={activeView === 'inbox' ? 'active' : ''} onClick={() => setActiveView('inbox')}>
+            <Inbox size={18} /> Mission Control
+          </button>
+          <button className={activeView === 'thread' ? 'active' : ''} onClick={() => setActiveView('thread')}>
+            <Mail size={18} /> Thread Workspace
+          </button>
+          <button className={activeView === 'analytics' ? 'active' : ''} onClick={() => setActiveView('analytics')}>
+            <LineChartIcon size={18} /> Analytics
+          </button>
         </nav>
         <div className="sync-box">
           <Clock size={16} />
@@ -284,7 +580,9 @@ function App() {
       </aside>
 
       <section className="workspace">
-        <Header activeView={activeView} />
+        <Header activeView={activeView} connectionState={connectionState} />
+        <div className="action-banner">{actionMessage}</div>
+        <StatsStrip stats={dashboardStats} />
         {activeView === 'inbox' && (
           <MissionControl
             threads={filteredThreads}
@@ -298,10 +596,18 @@ function App() {
             sortBy={sortBy}
             setSortBy={setSortBy}
             bulkSetStatus={bulkSetStatus}
+            onAssign={handleAssignSelected}
+            onArchive={handleArchiveSelected}
           />
         )}
         {activeView === 'thread' && (
-          <ThreadWorkspace thread={selectedThread} markSelected={markSelected} />
+          <ThreadWorkspace
+            thread={selectedThread}
+            insight={selectedInsight}
+            markSelected={markSelected}
+            onEditDraft={handleEditDraft}
+            onApproveAndSend={handleApproveAndSend}
+          />
         )}
         {activeView === 'analytics' && <AnalyticsDashboard analytics={analytics} />}
       </section>
@@ -309,7 +615,7 @@ function App() {
   );
 }
 
-function Header({ activeView }) {
+function Header({ activeView, connectionState }) {
   const titles = {
     inbox: 'Mission Control Inbox',
     thread: 'Thread Workspace',
@@ -323,13 +629,34 @@ function Header({ activeView }) {
       </div>
       <div className="topbar-actions">
         <span className="status-dot"></span>
-        <span>Backend-aware demo mode</span>
+        <span>{connectionState === 'live' ? 'Live backend connected' : connectionState === 'loading' ? 'Loading backend context' : 'Demo fallback'}</span>
       </div>
     </header>
   );
 }
 
-function MissionControl({ threads, selectedId, setSelectedId, setActiveView, tab, setTab, query, setQuery, sortBy, setSortBy, bulkSetStatus }) {
+function StatsStrip({ stats }) {
+  const cards = [
+    { label: 'Pending', value: stats.pending },
+    { label: 'Replied', value: stats.replied },
+    { label: 'Escalated', value: stats.escalated },
+    { label: 'Critical', value: stats.critical },
+    { label: 'Spam', value: stats.spam },
+    { label: 'Needs human', value: stats.needs_human },
+  ];
+  return (
+    <div className="stats-strip">
+      {cards.map((card) => (
+        <div className="stats-card" key={card.label}>
+          <span>{card.label}</span>
+          <strong>{card.value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MissionControl({ threads, selectedId, setSelectedId, setActiveView, tab, setTab, query, setQuery, sortBy, setSortBy, bulkSetStatus, onAssign, onArchive }) {
   const tabs = ['All', 'Needs Human', 'Auto-Replied', 'Escalated', 'Spam'];
   return (
     <div className="panel-stack">
@@ -337,8 +664,8 @@ function MissionControl({ threads, selectedId, setSelectedId, setActiveView, tab
         <div className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subject, body, sender" /></div>
         <label><Filter size={16} /><select value={sortBy} onChange={(event) => setSortBy(event.target.value)}><option value="priority">Priority</option><option value="lastActivity">Last activity</option><option value="sentiment">Most negative</option></select></label>
         <button onClick={() => bulkSetStatus('Spam')}><ShieldAlert size={16} /> Mark Spam</button>
-        <button onClick={() => bulkSetStatus('Assigned')}><UserCheck size={16} /> Assign</button>
-        <button onClick={() => bulkSetStatus('Archived')}><Archive size={16} /> Archive</button>
+        <button onClick={onAssign}><UserCheck size={16} /> Assign</button>
+        <button onClick={onArchive}><Archive size={16} /> Archive</button>
       </section>
       <div className="tabs">{tabs.map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</div>
       <section className="inbox-list">
@@ -363,8 +690,20 @@ function MissionControl({ threads, selectedId, setSelectedId, setActiveView, tab
   );
 }
 
-function ThreadWorkspace({ thread, markSelected }) {
-  const latest = thread.messages[thread.messages.length - 1];
+function ThreadWorkspace({ thread, insight, markSelected, onEditDraft, onApproveAndSend }) {
+  if (!thread) {
+    return (
+      <div className="panel-empty">
+        <p>No thread selected.</p>
+      </div>
+    );
+  }
+
+  const latest = thread.messages[thread.messages.length - 1] || {};
+  const reasoningSteps = insight?.reasoningTrace?.length ? insight.reasoningTrace : thread.reasoning;
+  const ragChunks = insight?.ragResults?.length ? insight.ragResults : thread.rag;
+  const marketBlock = insight?.marketBlock || thread.market;
+  const marketSummary = insight?.marketSummary || null;
   return (
     <div className="thread-grid">
       <section className="email-pane">
@@ -372,10 +711,11 @@ function ThreadWorkspace({ thread, markSelected }) {
         <h3>{latest.subject}</h3>
         <p className="muted">{thread.sender}</p>
         <HighlightedText text={latest.body} entities={thread.entities} />
-        {thread.market && <div className="market-inline"><ExternalLink size={16} /> {thread.market}</div>}
+        {marketSummary && <div className="market-inline"><ExternalLink size={16} /> {marketSummary}</div>}
+        {marketBlock && <div className="market-inline"><ExternalLink size={16} /> <span>{marketBlock}</span></div>}
         <div className="action-bar">
-          <button><CheckCircle2 size={16} /> Approve & Send</button>
-          <button><Edit3 size={16} /> Edit Draft</button>
+          <button onClick={onApproveAndSend}><CheckCircle2 size={16} /> Approve & Send</button>
+          <button onClick={onEditDraft}><Edit3 size={16} /> Edit Draft</button>
           <button onClick={() => markSelected('Escalated')}><AlertTriangle size={16} /> Escalate</button>
           <button onClick={() => markSelected('Spam')}><ShieldAlert size={16} /> Mark Spam</button>
         </div>
@@ -395,8 +735,14 @@ function ThreadWorkspace({ thread, markSelected }) {
       </section>
       <aside className="context-pane">
         <ContactCard thread={thread} />
-        <ReasoningPanel steps={thread.reasoning} />
-        <RagPanel chunks={thread.rag} />
+        {thread.assignedTo && (
+          <section className="context-card">
+            <div className="section-title"><UserCheck size={18} /> Assignment</div>
+            <p className="muted">Assigned to: {thread.assignedTo}</p>
+          </section>
+        )}
+        <ReasoningPanel steps={reasoningSteps} />
+        <RagPanel chunks={ragChunks} />
       </aside>
     </div>
   );
@@ -411,6 +757,9 @@ function ContactCard({ thread }) {
       <div className="metric-row"><span>Status</span><b>{thread.contact.status}</b></div>
       <div className="metric-row"><span>Account Value</span><b>${thread.contact.accountValue.toLocaleString()}</b></div>
       <div className="metric-row"><span>Churn Risk</span><b>{Math.round(thread.contact.churnRiskScore * 100)}%</b></div>
+      {thread.contact.subscriptionTier && <div className="metric-row"><span>Tier</span><b>{thread.contact.subscriptionTier}</b></div>}
+      {thread.contact.renewalStatus && <div className="metric-row"><span>Renewal</span><b>{thread.contact.renewalStatus}</b></div>}
+      <div className="metric-row"><span>Open threads</span><b>{thread.contact.openThreads}</b></div>
       {thread.contact.vipReason && <div className="note"><Tag size={14} /> {thread.contact.vipReason}</div>}
     </section>
   );
@@ -420,6 +769,7 @@ function ReasoningPanel({ steps }) {
   return (
     <details className="context-card" open>
       <summary><Bot size={18} /> Agent Reasoning</summary>
+      {!steps?.length && <p className="muted">No reasoning trace is available for this thread yet.</p>}
       {steps.map((step, index) => (
         <div className="reason-step" key={`${step.action}-${index}`}>
           <strong>Thought</strong><p>{step.thought}</p>
@@ -436,6 +786,7 @@ function RagPanel({ chunks }) {
   return (
     <details className="context-card" open>
       <summary><FileSearch size={18} /> RAG Context</summary>
+      {!chunks?.length && <p className="muted">No RAG chunks are available for this thread yet.</p>}
       {chunks.map((chunk) => (
         <div className="rag-row" key={`${chunk.source_doc}-${chunk.score}`}>
           <div><strong>{chunk.source_doc}</strong><span>{Math.round(chunk.score * 100)}%</span></div>
