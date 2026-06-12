@@ -10,6 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from app.models.vector_type import Vector
 
 revision: str = "20260610_0001"
 down_revision: Union[str, None] = None
@@ -247,7 +248,7 @@ def upgrade() -> None:
         sa.Column("embedding_model", sa.String(length=255), nullable=False),
         sa.Column("embedding_hash", sa.String(length=255)),
         sa.Column("faiss_vector_id", sa.Integer()),
-        sa.Column("embedding", postgresql.JSONB()),
+        sa.Column("embedding", Vector(384)),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.UniqueConstraint("source_doc", "chunk_index", name="uq_knowledge_source_chunk"),

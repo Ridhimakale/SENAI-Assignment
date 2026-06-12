@@ -1,0 +1,125 @@
+erDiagram
+    CONTACTS ||--o{ THREADS : owns
+    CONTACTS ||--o{ EMAILS : sends
+    THREADS  ||--o{ EMAILS : contains
+    EMAILS   ||--o{ ACTIONS : generates
+    EMAILS   ||--o{ CLASSIFICATION_RUNS : tracks
+    EMAILS   ||--o{ INTERNAL_TICKETS : creates
+    EMAILS   ||--o{ PROCESSING_JOBS : processes
+
+    CONTACTS {
+        int id PK
+        string email
+        string name
+        string company
+        string status
+        decimal account_value
+        float churn_risk_score
+        string vip_reason
+        json metadata_json
+    }
+
+    THREADS {
+        int id PK
+        string thread_id
+        int contact_id FK
+        string subject
+        string sender_email
+        datetime first_seen_at
+        datetime last_updated_at
+        string status
+        int priority_score
+        int message_count
+    }
+
+    EMAILS {
+        int id PK
+        int thread_id FK
+        int contact_id FK
+        int processing_job_id FK
+        string message_id
+        string sender
+        string subject
+        text body
+        datetime timestamp
+        float sentiment_score
+        string category
+        string urgency
+        boolean requires_human
+        float confidence
+        json raw_entities
+        json heuristic_flags
+        json classification_raw
+        json rag_context
+        string status
+        int priority_score
+    }
+
+    ACTIONS {
+        int id PK
+        int email_id FK
+        string action_type
+        string status
+        text proposed_content
+        boolean is_approved
+        string approved_by
+        datetime executed_at
+        json agent_reasoning_log
+        json tool_input
+        json tool_output
+    }
+
+    CLASSIFICATION_RUNS {
+        int id PK
+        int email_id FK
+        string prompt_version
+        string model_name
+        float confidence
+        datetime created_at
+        json classification_output
+    }
+
+    INTERNAL_TICKETS {
+        int id PK
+        int email_id FK
+        int thread_id FK
+        string title
+        string assignee
+        string priority
+        string status
+    }
+
+    PROCESSING_JOBS {
+        int id PK
+        int email_id FK
+        string job_id
+        string status
+        datetime created_at
+    }
+
+    KNOWLEDGE_CHUNKS {
+        int id PK
+        string source_doc
+        text chunk_text
+        vector embedding
+    }
+
+    WEB_INTELLIGENCE_CACHE {
+        int id PK
+        string source_url
+        string target_entity
+        json scraped_data
+        datetime scraped_at
+        datetime expires_at
+    }
+
+    AUDIT_LOG {
+        int id PK
+        string entity_type
+        int entity_id
+        string action
+        string performed_by
+        datetime timestamp
+        json diff
+        json metadata_json
+    }

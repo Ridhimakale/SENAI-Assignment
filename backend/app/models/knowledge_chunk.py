@@ -1,9 +1,9 @@
 from sqlalchemy import Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
 from app.models.mixins import TimestampMixin
+from app.models.vector_type import Vector
 
 
 class KnowledgeChunk(TimestampMixin, Base):
@@ -20,7 +20,7 @@ class KnowledgeChunk(TimestampMixin, Base):
     embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
     embedding_hash: Mapped[str | None] = mapped_column(String(255))
     faiss_vector_id: Mapped[int | None] = mapped_column(Integer)
-    embedding: Mapped[list[float] | None] = mapped_column(JSONB)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384))
 
 
 Index("ix_knowledge_chunks_source_doc", KnowledgeChunk.source_doc)
