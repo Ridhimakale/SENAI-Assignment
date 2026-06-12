@@ -1,6 +1,8 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
+from datetime import datetime, timezone
+from statistics import fmean
 import re
 
 from app.models.contact import Contact
@@ -206,9 +208,24 @@ def _infer_churn_risk(
     risk = 0.05
     factors: list[str] = []
 
+    sentiment_scores = [email.sentiment_score for email in email_list if email.sentiment_score is not None]
+    recent_emails = sorted(email_list, key=lambda email: email.timestamp)[-3:]
+    latest_email = max(email_list, key=lambda email: email.timestamp, default=None)
+
     if negative_signals >= 3:
         risk += 0.35
         factors.append("three_or_more_negative_signals")
+    if sentiment_scores:
+        avg_sentiment = fmean(sentiment_scores)
+        if avg_sentiment < -0.3:
+            risk += 0.2
+            factors.append("negative_sentiment_average")
+        if latest_email is not None and (latest_email.sentiment_score or 0) <= -0.4:
+            risk += 0.1
+            factors.append("latest_email_negative")
+    if len(recent_emails) >= 3 and all((email.sentiment_score or 0) < -0.15 for email in recent_emails):
+        risk += 0.15
+        factors.append("recent_negative_streak")
     if any(token in combined_text for token in ("refund", "cancel", "churn", "leave")):
         risk += 0.2
         factors.append("retention_keywords")
@@ -228,9 +245,28 @@ def _infer_churn_risk(
     if email_list and len(email_list) >= 5:
         risk += 0.05
         factors.append("long_running_thread")
+    if latest_email is not None:
+        age_hours = (datetime.now(timezone.utc) - latest_email.timestamp).total_seconds() / 3600
+        if age_hours > 48 and any(_is_not_replied(email) for email in email_list):
+            risk += 0.15
+            factors.append("unresolved_thread_over_48h")
+    if len(email_list) >= 4:
+        gaps = []
+        ordered = sorted(email_list, key=lambda email: email.timestamp)
+        for previous, current in zip(ordered, ordered[1:]):
+            gap_hours = max(0.0, (current.timestamp - previous.timestamp).total_seconds() / 3600)
+            gaps.append(gap_hours)
+        if gaps and max(gaps) >= 24:
+            risk += 0.1
+            factors.append("long_response_gap")
 
     risk = max(0.0, min(risk, 1.0))
     return round(risk, 2), factors
+
+
+def _is_not_replied(email: Email) -> bool:
+    status_text = getattr(email.status, "value", str(email.status)).lower()
+    return status_text != "replied"
 
 
 def _infer_subscription_tier(

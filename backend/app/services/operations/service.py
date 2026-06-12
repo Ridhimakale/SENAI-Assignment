@@ -36,14 +36,16 @@ class OperationsService:
         contact_response = self._contact_response(contact, open_threads=open_threads)
         threads = []
         for thread in self.repository.order_threads(contact.threads):
+            ordered_emails = self.repository.order_emails(thread.emails)
             emails = []
-            for email in self.repository.order_emails(thread.emails):
+            for email in ordered_emails:
                 actions = [ActionSummaryResponse.model_validate(action) for action in email.actions]
                 email_response = EmailThreadItemResponse.model_validate(email)
                 email_response.actions = actions
                 emails.append(email_response)
             thread_response = ThreadDetailResponse.model_validate(thread)
             thread_response.emails = emails
+            thread_response.executive_summary = _build_executive_summary(thread.subject, ordered_emails, thread.status)
             threads.append(thread_response)
         return ContactThreadsResponse(contact=contact_response, threads=threads)
 
@@ -152,3 +154,35 @@ class OperationsService:
         response = ContactProfileResponse.model_validate(contact)
         response.open_threads = open_threads
         return response
+
+
+def _build_executive_summary(subject: str | None, emails: list[Email], status: object) -> str | None:
+    if not emails:
+        return None
+
+    message_count = len(emails)
+    first_email = emails[0]
+    latest_email = emails[-1]
+    status_value = getattr(status, "value", str(status))
+    first_sentence = (
+        f"This thread started with {first_email.subject or subject or 'an email'} and has now grown into a {message_count}-message conversation."
+    )
+    second_sentence = (
+        f"The latest message focuses on {latest_email.subject or 'the current issue'} and the thread is currently {str(status_value).lower()}."
+    )
+
+    if message_count >= 5:
+        middle_points = []
+        if any((email.sentiment_score or 0) < -0.2 for email in emails):
+            middle_points.append("sentiment has deteriorated over time")
+        if any("legal" in f"{email.subject or ''} {email.body}".lower() for email in emails):
+            middle_points.append("legal sensitivity is present")
+        if any("refund" in f"{email.subject or ''} {email.body}".lower() for email in emails):
+            middle_points.append("refund and retention context matters")
+        if not middle_points:
+            middle_points.append("the thread needs policy-aware handling")
+        third_sentence = f"Key signals include {', '.join(middle_points)}."
+    else:
+        third_sentence = "No additional escalation pattern is visible yet, but the thread should be monitored closely."
+
+    return " ".join([first_sentence, second_sentence, third_sentence])

@@ -6,7 +6,7 @@ from app.core.config import get_settings
 from app.models.email import Email
 from app.models.enums import ActionStatus, ActionType, EmailCategory, EmailUrgency
 from app.repositories.agent import AgentRepository
-from app.schemas.agent import AgentRunResponse, ProposedAction, ReasoningStep
+from app.schemas.agent import AgentRunResponse, DraftGenerationResponse, ProposedAction, ReasoningStep
 from app.services.agents.safety import auto_reply_block_reason
 from app.services.rag.service import get_rag_service
 from app.services.web_intelligence.service import create_web_intelligence_service
@@ -32,6 +32,7 @@ class ReActAgentService:
         )
         trace: list[ReasoningStep] = []
         proposed_actions: list[ProposedAction] = []
+        draft_preview: str | None = None
         tool_calls = 0
 
         async def record(thought: str, action: str, observation: str, next_step: str) -> None:
@@ -158,6 +159,7 @@ class ReActAgentService:
                 tone="empathetic",
                 policy_refs=sources,
             )
+            draft_preview = draft.get("draft")
             tool_calls += 1
             proposed_actions.append(
                 ProposedAction(
@@ -227,9 +229,43 @@ class ReActAgentService:
             dry_run=dry_run,
             reasoning_trace=trace,
             proposed_actions=proposed_actions,
+            draft_preview=draft_preview,
             tool_call_count=tool_calls,
             max_tool_calls=self.max_tool_calls,
             final_status="planned" if dry_run else "executed",
+        )
+
+    async def generate_draft(self, email_id: int) -> DraftGenerationResponse:
+        repository = AgentRepository(self.session)
+        email = await repository.get_email_context(email_id)
+        if email is None:
+            raise ValueError("Email not found.")
+
+        tools = AgentTools(
+            repository=repository,
+            rag_service=get_rag_service(),
+            web_intelligence_service=create_web_intelligence_service(self.session),
+        )
+
+        history = await tools.get_thread_history(email.sender)
+        rag_result = await tools.search_knowledge_base(_rag_query_for_email(email))
+        policy_refs = sorted({item["source_doc"] for item in rag_result["results"]})
+        history_lines = [
+            f"{item['timestamp']} | {item['subject']} | {item['body']}"
+            for item in history["emails"][-6:]
+        ]
+        context = (
+            f"Current email subject: {email.subject or '(no subject)'}\n"
+            f"Current email body: {email.body}\n\n"
+            f"Recent thread history:\n" + ("\n".join(history_lines) if history_lines else "No prior messages.")
+        )
+        draft = await tools.draft_reply(context=context, tone="empathetic", policy_refs=policy_refs)
+        return DraftGenerationResponse(
+            email_id=email.id,
+            draft=str(draft.get("draft") or ""),
+            policy_refs=draft.get("policy_refs") or policy_refs,
+            model_name=draft.get("model_name"),
+            provider=draft.get("provider"),
         )
 
 

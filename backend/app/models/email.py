@@ -5,10 +5,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+from app.models.action import Action
 from app.models.classification_run import ClassificationRun
+from app.models.contact import Contact
 from app.models.internal_ticket import InternalTicket
 from app.models.enums import EmailCategory, EmailStatus, EmailUrgency
 from app.models.mixins import TimestampMixin
+from app.models.processing_job import ProcessingJob
+from app.models.thread import Thread
 from app.models.sqlalchemy_types import enum_type
 
 

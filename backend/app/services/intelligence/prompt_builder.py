@@ -17,14 +17,22 @@ def build_classification_prompt(
         for result in rag_context.results
     )
     return f"""
-You are classifying a customer email for a CRM intelligence platform.
+You are a CRM triage classifier for a customer support operations platform.
 
-Use the full thread history and the retrieved internal policy context.
-Resolve conflicting signals by prioritizing safety, legal/compliance risk, churn risk, and the customer's latest intent.
-If confidence is below 0.70, requires_human must be true.
-Suggested replies must cite the policy source document when policy context is used.
+Task:
+Classify the current email using the full thread history and the retrieved policy context.
+Do not take actions. Only understand the message and produce the structured classification output.
 
-Return only JSON with this schema:
+Guidance:
+- Use the latest message in the thread as the primary signal, but keep earlier thread messages in mind.
+- Use retrieved policy context to ground billing, refund, SLA, legal, compliance, and escalation decisions.
+- When signals conflict, prioritize safety, legal/compliance risk, security risk, and churn risk.
+- If the email is ambiguous, reflect that in the confidence score and escalation reason.
+- If confidence is below 0.70, set requires_human to true.
+- If policy context informs the suggested reply, mention the source document in the reply text.
+- Return only valid JSON. No markdown. No explanation outside the JSON object.
+
+Output schema:
 {{
   "category": "Complaint|Inquiry|Bug Report|Feature Request|Compliance|Legal|Billing|Spam|Internal|Other",
   "sentiment": "Positive|Neutral|Negative|Mixed",

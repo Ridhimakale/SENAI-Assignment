@@ -20,6 +20,15 @@ class AgentRunResponse(BaseModel):
     dry_run: bool
     reasoning_trace: list[ReasoningStep]
     proposed_actions: list[ProposedAction]
+    draft_preview: str | None = None
     tool_call_count: int
     max_tool_calls: int
     final_status: str
+
+
+class DraftGenerationResponse(BaseModel):
+    email_id: int
+    draft: str
+    policy_refs: list[str]
+    model_name: str | None = None
+    provider: str | None = None

@@ -92,6 +92,7 @@ class ThreadDetailResponse(BaseModel):
     assigned_to: str | None
     priority_score: int
     message_count: int
+    executive_summary: str | None = None
     emails: list[EmailThreadItemResponse]
 
     model_config = ConfigDict(from_attributes=True)
