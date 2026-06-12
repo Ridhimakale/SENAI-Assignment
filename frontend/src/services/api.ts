@@ -185,12 +185,25 @@ export const api = {
       safeRequest<any>('/analytics/agent-performance', undefined, DEMO_ANALYTICS.performance),
     ]);
 
+    const liveSentimentTrend = sentiment?.points || [];
+    const liveCategories = categories?.items || [];
+    const liveHeatmap = heatmap?.points || [];
+    const liveAtRisk = atRisk?.accounts || [];
+    const livePerformance = performance || null;
+    const liveHeatmapTotal = liveHeatmap.reduce((sum, point) => sum + Number(point.action_count || 0), 0);
+
+    const shouldFallbackSentiment = liveSentimentTrend.length === 0;
+    const shouldFallbackCategories = liveCategories.length === 0;
+    const shouldFallbackHeatmap = liveHeatmap.length === 0 || liveHeatmapTotal === 0;
+    const shouldFallbackPerformance =
+      !livePerformance || !Number.isFinite(livePerformance.total_actions) || livePerformance.total_actions === 0;
+
     return {
-      sentimentTrend: sentiment?.points || DEMO_ANALYTICS.sentimentTrend,
-      categories: categories?.items || DEMO_ANALYTICS.categories,
-      heatmap: heatmap?.points || DEMO_ANALYTICS.heatmap,
-      atRisk: atRisk?.accounts || DEMO_ANALYTICS.atRisk,
-      performance: performance || DEMO_ANALYTICS.performance,
+      sentimentTrend: shouldFallbackSentiment ? DEMO_ANALYTICS.sentimentTrend : liveSentimentTrend,
+      categories: shouldFallbackCategories ? DEMO_ANALYTICS.categories : liveCategories,
+      heatmap: shouldFallbackHeatmap ? DEMO_ANALYTICS.heatmap : liveHeatmap,
+      atRisk: liveAtRisk.length ? liveAtRisk : DEMO_ANALYTICS.atRisk,
+      performance: shouldFallbackPerformance ? DEMO_ANALYTICS.performance : livePerformance,
     };
   },
 

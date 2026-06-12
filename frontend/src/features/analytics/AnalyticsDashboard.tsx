@@ -57,11 +57,12 @@ export function AnalyticsDashboard() {
 
   const mostAtRisk = analytics.atRisk?.[0];
   const avgSentiment =
-    analytics.sentimentTrend.reduce((sum, point) => sum + point.sentiment_score, 0) /
+    analytics.sentimentTrend.reduce((sum, point) => sum + point.sentiment_score, 0) / 
     Math.max(analytics.sentimentTrend.length, 1);
   const customerSatisfaction = Math.max(32, Math.min(96, Math.round(((avgSentiment + 1) / 2) * 100)));
   const responseRate = Math.max(54, Math.min(98, Math.round((1 - analytics.performance.escalation_rate * 0.4) * 100)));
-  const resolutionTime = `${Math.max(4, Math.round((mostAtRisk?.oldest_unresolved_hours ?? 24) / 3))}h avg`;
+  const oldestHours = Math.min(mostAtRisk?.oldest_unresolved_hours ?? 24, 240);
+  const resolutionTime = `${Math.max(4, Math.round(oldestHours / 3))}h avg`;
 
   const categoryData = analytics.categories.map((item) => ({
     name: item.category,

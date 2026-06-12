@@ -45,6 +45,23 @@ const emptyContact: ContactProfile = {
   renewalStatus: null,
 };
 
+function summarizeSnippet(text: string, maxLength = 180) {
+  const cleaned = String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\*\s*/g, ' ')
+    .trim();
+
+  if (!cleaned) return '';
+
+  const sentenceMatch = cleaned.match(/^(.+?[.!?])(\s|$)/);
+  const firstSentence = sentenceMatch?.[1] || cleaned;
+  if (firstSentence.length <= maxLength) {
+    return firstSentence;
+  }
+
+  return `${firstSentence.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 export function ThreadWorkspace() {
   const { selectedId, setSelectedId, draftBodies, updateDraftBody, setActionMessage, connectionState } = useStore();
   const { data: threads, isLoading } = useThreads();
@@ -176,8 +193,13 @@ export function ThreadWorkspace() {
 
   const handleGenerateDraft = () => {
     const emailId = latestMessage?.emailId ?? (typeof latestMessage?.id === 'number' ? latestMessage.id : Number(latestMessage?.id));
+    const threadIntent = thread.category.toLowerCase();
+    const demoDraft = `Hi ${companyName},\n\nThanks for reaching out. We reviewed the current thread context and are treating this as a ${threadIntent} case.\n\n${threadSummary ? `In short: ${threadSummary}\n\n` : ''}We are keeping this reply aligned with the conversation history and the relevant policy context. Please let us know if you'd like us to move this to a human reviewer.\n\nBest,\nSENAI Ops`;
+
     if (!Number.isFinite(emailId) || emailId <= 0) {
-      setActionMessage('Unable to generate draft: no email context found.');
+      setDraftText(demoDraft);
+      setDraftEditorText(demoDraft);
+      setActionMessage('Demo draft generated from thread context.');
       return;
     }
 
@@ -187,16 +209,15 @@ export function ThreadWorkspace() {
       .then((result) => {
         const preview =
           result?.draft ||
-          `Hi ${companyName},\n\nWe are reviewing your ${thread.category.toLowerCase()} request and will follow up shortly.\n\nBest,\nSENAI Ops`;
+          demoDraft;
 
         setDraftText(preview);
         setDraftEditorText(preview);
         setActionMessage('AI draft generated from backend agent.');
       })
       .catch(() => {
-        const fallbackDraft = `Hi ${companyName},\n\nWe are reviewing your ${thread.category.toLowerCase()} request and will follow up shortly.\n\nBest,\nSENAI Ops`;
-        setDraftText(fallbackDraft);
-        setDraftEditorText(fallbackDraft);
+        setDraftText(demoDraft);
+        setDraftEditorText(demoDraft);
         setActionMessage('Fallback draft generated locally.');
       })
       .finally(() => {
@@ -585,8 +606,8 @@ export function ThreadWorkspace() {
                               Match {formatPercentage(source.score || 0.8)}
                             </Badge>
                           </div>
-                          <p className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-sm leading-6 text-slate-600">
-                            {source.chunk_text}
+                          <p className="rounded-2xl border border-slate-100 bg-slate-50/70 p-3 text-sm leading-6 text-slate-600 line-clamp-4">
+                            {summarizeSnippet(source.chunk_text)}
                           </p>
                         </CardContent>
                       </Card>
